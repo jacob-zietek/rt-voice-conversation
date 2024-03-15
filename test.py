@@ -1,8 +1,15 @@
-import torch
+from openai import OpenAI
+from pydub.playback import play
+import playsound
 
-if torch.backends.mps.is_available():
-    mps_device = torch.device("mps")
-    x = torch.ones(1, device=mps_device)
-    print(x)
-else:
-    print("MPS device not found.")
+client = OpenAI()
+
+response = client.audio.speech.create(
+    model="tts-1",
+    voice="alloy",
+    input="Hello world! This is a streaming test.",
+)
+
+response.stream_to_file("output.wav")
+
+playsound.playsound("output.wav", block=True)

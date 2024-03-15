@@ -1,5 +1,10 @@
 #! python3.7
 
+SYSTEM_PROMPT = """You are a friendly bot that has interests in robotics, ai, and space.
+Your name is Paul.
+You will be talking to a single person, keep the chat going by asking questions.
+Respond briefly, under 15 words."""
+
 import argparse
 import os
 import numpy as np
@@ -11,13 +16,27 @@ from datetime import datetime, timedelta
 from queue import Queue
 from time import sleep
 from sys import platform
+from openai import OpenAI
+from TTS.api import TTS
+import pyaudio
+import playsound
+
+# tts = TTS("tts_models/multilingual/multi-dataset/xtts_v2")
+
+client = OpenAI()
+messages = [
+    {"role": "system", "content": SYSTEM_PROMPT},
+]
+
+# Thread safe Queue for passing data from the threaded recording callback.
+data_queue = Queue()
 
 
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--model",
-        default="medium",
+        default="base",
         help="Model to use",
         choices=["tiny", "base", "small", "medium", "large"],
     )
@@ -32,7 +51,7 @@ def main():
     )
     parser.add_argument(
         "--record_timeout",
-        default=10,
+        default=20,
         help="How real time the recording is in seconds.",
         type=float,
     )
@@ -55,8 +74,7 @@ def main():
 
     # The last time a recording was retrieved from the queue.
     phrase_time = None
-    # Thread safe Queue for passing data from the threaded recording callback.
-    data_queue = Queue()
+
     # We use SpeechRecognizer to record our audio because it has a nice feature where it can detect when speech ends.
     recorder = sr.Recognizer()
     recorder.energy_threshold = args.energy_threshold
@@ -112,9 +130,14 @@ def main():
     # Cue the user that we're ready to go.
     print("Model loaded.\n")
 
+    print_messages()
+
     while True:
         try:
             now = datetime.utcnow()
+            if not phrase_time:
+                phrase_time = now
+
             # Pull raw recorded audio from the queue.
             if not data_queue.empty():
                 phrase_complete = False
@@ -149,26 +172,53 @@ def main():
                 # Otherwise edit the existing one.
                 if phrase_complete:
                     transcription.append(text)
-                    # respond_to_user(text)
+                    respond_to_user(text)
+                    # Clear the data_queue and discard anything the user said while
+                    # the tts was running
+                    data_queue.queue.clear()
 
                 # else:
                 #     transcription[-1] = text
 
-                # Clear the console to reprint the updated transcription.
-                os.system("cls" if os.name == "nt" else "clear")
-                for line in transcription:
-                    print(line)
-                # Flush stdout.
-                print("", end="", flush=True)
             else:
                 # Infinite loops are bad for processors, must sleep.
                 sleep(0.25)
         except KeyboardInterrupt:
             break
 
-    print("\n\nTranscription:")
-    for line in transcription:
-        print(line)
+    # print("\n\nTranscription:")
+    # for line in transcription:
+    #     print(line)
+
+
+def respond_to_user(text):
+    messages.append({"role": "user", "content": text})
+    print_messages()
+    response = client.chat.completions.create(model="gpt-3.5-turbo", messages=messages)
+    response_text = response.choices[0].message.content
+    messages.append({"role": "assistant", "content": response_text})
+    play_tts(response_text)
+
+
+def play_tts(text):
+    # tts.tts_to_file(
+    #     text=text, speaker_wav="jacob.wav", file_path="output.wav", language="en"
+    # )
+    response = client.audio.speech.create(model="tts-1", voice="alloy", input=text)
+    response.stream_to_file("output.wav")
+    print_messages()
+    playsound.playsound("output.wav", block=True)
+    # TODO: Process the file by chunk and see if the user's speaking, interrupt the playback and
+    # end prematurely
+
+
+def print_messages():
+    # Clear the console to reprint the updated transcription.
+    os.system("cls" if os.name == "nt" else "clear")
+    for line in messages:
+        print(f'{line["role"]}: {line["content"]}\n')
+    # Flush stdout.
+    print("", end="", flush=True)
 
 
 if __name__ == "__main__":
