@@ -18,10 +18,8 @@ from time import sleep
 from sys import platform
 from openai import OpenAI
 from TTS.api import TTS
-import pyaudio
 import playsound
 
-# tts = TTS("tts_models/multilingual/multi-dataset/xtts_v2")
 
 client = OpenAI()
 messages = [
@@ -62,6 +60,12 @@ def main():
         "consider it a new line in the transcription.",
         type=float,
     )
+    # parser.add_argument(
+    #     "--interrupt_bool",
+    #     default=False,
+    #     help="Interrupt mode on or of. If on, this interrupts the AI while its speaking and allows you to speak.",
+    #     type=bool,
+    # )
     if "linux" in platform:
         parser.add_argument(
             "--default_microphone",
@@ -173,22 +177,16 @@ def main():
                 if phrase_complete:
                     transcription.append(text)
                     respond_to_user(text)
+
                     # Clear the data_queue and discard anything the user said while
                     # the tts was running
                     data_queue.queue.clear()
-
-                # else:
-                #     transcription[-1] = text
 
             else:
                 # Infinite loops are bad for processors, must sleep.
                 sleep(0.25)
         except KeyboardInterrupt:
             break
-
-    # print("\n\nTranscription:")
-    # for line in transcription:
-    #     print(line)
 
 
 def respond_to_user(text):
@@ -216,7 +214,8 @@ def print_messages():
     # Clear the console to reprint the updated transcription.
     os.system("cls" if os.name == "nt" else "clear")
     for line in messages:
-        print(f'{line["role"]}: {line["content"]}\n')
+        if line["role"] != "system":
+            print(f'{line["role"]}: {line["content"]}\n')
     # Flush stdout.
     print("", end="", flush=True)
 
